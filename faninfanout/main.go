@@ -28,27 +28,57 @@ func main() {
 	}()
 
 	wg := sync.WaitGroup{}
-	wg.Add(3)
+	wg.Add(2)
+
+	orderChan := make(chan *Order)
+
+	go func() {
+		defer wg.Done()
+		for _, order := range generateOrders(20) {
+			orderChan <- order
+		}
+		close(orderChan)
+
+		slog.Info("Done with generating orders")
+	}()
+
 	orders := generateOrders(20)
 
-	/*	go func() {
-		defer wg.Done()
-		processOrders(orders)
-	}()*/
-
-	for range 3 {
-		go func() {
-			defer wg.Done()
-			for _, order := range orders {
-				updateOrderStatus(order)
-			}
-
-		}()
-	}
+	go processOrders(orderChan, &wg)
 
 	wg.Wait()
 
 	reportOrderStatuses(orders)
+}
+
+func reportOrderStatuses(orders []*Order) {
+	fmt.Println("--Order Status Report --")
+	for _, order := range orders {
+		fmt.Println(fmt.Sprintf("Order %d - Status: %s", order.ID, order.Status))
+	}
+
+	fmt.Println("--End of Order Status Report --")
+}
+
+func processOrders(orderChan <-chan *Order, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for order := range orderChan {
+		time.Sleep(time.Duration(rand.Intn(500)) * time.Millisecond) // Simulate processing time
+		slog.Info("Processing Order", slog.Int("orderID", order.ID), slog.String("status", order.Status))
+	}
+}
+
+func generateOrders(count int) []*Order {
+	orders := make([]*Order, count)
+
+	for i := range count {
+		orders[i] = &Order{
+			ID:     i + 1,
+			Status: "Pending",
+		}
+	}
+
+	return orders
 }
 
 func updateOrderStatuses(orders []*Order) {
@@ -79,32 +109,4 @@ func updateOrderStatus(order *Order) {
 	)
 
 	totalUpdate.Add(1)
-}
-
-func reportOrderStatuses(orders []*Order) {
-	fmt.Println("--Order Status Report --")
-	for _, order := range orders {
-		fmt.Println(fmt.Sprintf("Order %d - Status: %s", order.ID, order.Status))
-	}
-	fmt.Println("--End of Order Status Report --")
-}
-
-func processOrders(orders []*Order) {
-	for _, order := range orders {
-		time.Sleep(time.Duration(rand.Intn(500)) * time.Millisecond) // Simulate processing time
-		slog.Info("Processing Order", slog.Int("orderID", order.ID), slog.String("status", order.Status))
-	}
-}
-
-func generateOrders(count int) []*Order {
-	orders := make([]*Order, count)
-
-	for i := range count {
-		orders[i] = &Order{
-			ID:     i + 1,
-			Status: "Pending",
-		}
-	}
-
-	return orders
 }
