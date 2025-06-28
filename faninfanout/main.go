@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -17,13 +19,26 @@ func main() {
 		slog.Info("All operations completed.", slog.String("uptime", time.Since(startTime).String()))
 	}()
 
+	wg := sync.WaitGroup{}
+	wg.Add(3)
 	orders := generateOrders(20)
 
-	processOrders(orders)
+	go func() {
+		defer wg.Done()
+		processOrders(orders)
+	}()
 
-	updateOrderStatuses(orders)
+	go func() {
+		defer wg.Done()
+		updateOrderStatuses(orders)
+	}()
 
-	reportOrderStatuses(orders)
+	go func() {
+		defer wg.Done()
+		reportOrderStatuses(orders)
+	}()
+
+	wg.Wait()
 }
 
 func updateOrderStatuses(orders []*Order) {
@@ -44,14 +59,12 @@ func reportOrderStatuses(orders []*Order) {
 	for i := range 5 {
 		time.Sleep(1 * time.Second) // Simulate periodic reporting
 
+		fmt.Println("--Order Status Report --")
 		slog.Info("Order Status Report", slog.Int("iteration", i+1))
 		for _, order := range orders {
-			slog.Info("Order Status",
-				slog.Int("orderID", order.ID),
-				slog.String("status", order.Status),
-			)
+			fmt.Println(fmt.Sprintf("Order %d - Status: %s", order.ID, order.Status))
 		}
-		slog.Info("End of Report", slog.Int("iteration", i+1))
+		fmt.Println("--End of Order Status Report --")
 	}
 }
 
