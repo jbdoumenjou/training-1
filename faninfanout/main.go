@@ -28,9 +28,10 @@ func main() {
 	}()
 
 	wg := sync.WaitGroup{}
-	wg.Add(2)
+	wg.Add(3)
 
-	orderChan := make(chan *Order)
+	orderChan := make(chan *Order, 20)
+	processedChan := make(chan *Order, 20)
 
 	go func() {
 		defer wg.Done()
@@ -44,7 +45,25 @@ func main() {
 
 	orders := generateOrders(20)
 
-	go processOrders(orderChan, &wg)
+	go processOrders(orderChan, processedChan, &wg)
+
+	go func() {
+		defer wg.Done()
+
+		for {
+			select {
+			case processedOrder, ok := <-processedChan:
+				if !ok {
+					slog.Info("Processed channel closed, stopping processing")
+					return
+				}
+				slog.Info("Order processed", slog.Int("orderID", processedOrder.ID), slog.String("status", processedOrder.Status))
+			case <-time.After(10 * time.Second):
+				slog.Info("No orders processed in the last 10 seconds, checking for updates")
+				return
+			}
+		}
+	}()
 
 	wg.Wait()
 
@@ -60,11 +79,20 @@ func reportOrderStatuses(orders []*Order) {
 	fmt.Println("--End of Order Status Report --")
 }
 
-func processOrders(orderChan <-chan *Order, wg *sync.WaitGroup) {
-	defer wg.Done()
-	for order := range orderChan {
+func processOrders(inChan <-chan *Order, outChan chan<- *Order, wg *sync.WaitGroup) {
+	defer func() {
+		wg.Done()
+		close(outChan)
+	}()
+
+	for order := range inChan {
 		time.Sleep(time.Duration(rand.Intn(500)) * time.Millisecond) // Simulate processing time
-		slog.Info("Processing Order", slog.Int("orderID", order.ID), slog.String("status", order.Status))
+
+		order.mu.Lock()
+		order.Status = "Processed"
+		order.mu.Unlock()
+		outChan <- order
+		// slog.Info("Processing Order", slog.Int("orderID", order.ID), slog.String("status", order.Status))
 	}
 }
 
